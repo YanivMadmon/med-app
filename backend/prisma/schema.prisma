@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum Role {
+  PATIENT
+  CAREGIVER
+}
+
+enum Language {
+  HE
+  EN
+}
+
+enum DoseStatus {
+  TAKEN
+  MISSED
+  SNOOZED
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  FAMILY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+// ─── Users ───────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  name      String
+  role      Role
+  language  Language @default(HE)
+  fcmToken  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patientProfile PatientProfile?
+  caregiverLinks CaregiverPatient[] @relation("Caregiver")
+  patientLinks   CaregiverPatient[] @relation("Patient")
+  medications    Medication[]
+  subscription   Subscription?
+}
+
+// ─── Patient Profile ─────────────────────────────────────
+
+model PatientProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+// ─── Caregiver <-> Patient (Many-to-Many) ─────────────────
+
+model CaregiverPatient {
+  id          String   @id @default(uuid())
+  caregiverId String
+  patientId   String
+  isOwner     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  caregiver User @relation("Caregiver", fields: [caregiverId], references: [id], onDelete: Cascade)
+  patient   User @relation("Patient", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([caregiverId, patientId])
+}
+
+// ─── Medications ─────────────────────────────────────────
+
+model Medication {
+  id        String   @id @default(uuid())
+  patientId String
+  patient   User     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  dosage    String
+  photoUrl  String?
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  schedules MedicationSchedule[]
+}
+
+// ─── Medication Schedules ─────────────────────────────────
+
+model MedicationSchedule {
+  id                String     @id @default(uuid())
+  medicationId      String
+  medication        Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  time              String     // "08:00", "13:00", "20:00"
+  alertDelayMinutes Int        @default(30)
+  createdAt         DateTime   @default(now())
+
+  doseLogs DoseLog[]
+}
+
+// ─── Dose Logs ────────────────────────────────────────────
+
+model DoseLog {
+  id          String             @id @default(uuid())
+  scheduleId  String
+  schedule    MedicationSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduledAt DateTime
+  takenAt     DateTime?
+  status      DoseStatus         @default(SNOOZED)
+  createdAt   DateTime           @default(now())
+}
+
+// ─── Subscriptions ────────────────────────────────────────
+
+model Subscription {
+  id           String             @id @default(uuid())
+  userId       String             @unique
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan   @default(FREE)
+  status       SubscriptionStatus @default(ACTIVE)
+  revenueCatId String?
+  expiresAt    DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+}
