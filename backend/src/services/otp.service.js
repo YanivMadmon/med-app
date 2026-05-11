@@ -1,12 +1,12 @@
 const twilio = require('twilio');
 
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
-
 // In-memory OTP store (use Redis in production)
 const otpStore = new Map();
+
+const getClient = () => {
+  // Lazy init — only create when actually sending (not at module load)
+  return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+};
 
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
@@ -18,7 +18,18 @@ const sendOTP = async (phone) => {
 
   otpStore.set(phone, { otp, expiresAt });
 
-  await client.messages.create({
+  // In development, skip real SMS and write OTP to file for easy testing
+  if (!process.env.TWILIO_ACCOUNT_SID?.startsWith('AC')) {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const otpFile = path.join(os.tmpdir(), 'last-otp.txt');
+    process.stdout.write(`[DEV] OTP for ${phone}: ${otp}\n`);
+    fs.writeFileSync(otpFile, otp);
+    return otp;
+  }
+
+  await getClient().messages.create({
     body: `Your MedApp code is: ${otp}`,
     from: process.env.TWILIO_PHONE_NUMBER,
     to: phone,
