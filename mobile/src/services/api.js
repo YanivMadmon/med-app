@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://localhost:3000'; // Change to production URL when deploying
+const API_URL = 'http://192.168.1.103:3000'; // Local dev — change to production URL when deploying
 
 const api = axios.create({
   baseURL: API_URL,
