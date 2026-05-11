@@ -121,6 +121,8 @@ model DoseLog {
   takenAt     DateTime?
   status      DoseStatus         @default(SNOOZED)
   createdAt   DateTime           @default(now())
+
+  @@unique([scheduleId, scheduledAt])
 }
 
 // ─── Subscriptions ────────────────────────────────────────
