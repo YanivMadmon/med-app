@@ -38,7 +38,16 @@ const sendOTP = async (phone) => {
   return otp;
 };
 
+const DEV_CODE = '000000'; // Master code for development only
+
 const verifyOTP = (phone, code) => {
+  // Dev bypass — always works in development
+  const isDev = !process.env.TWILIO_ACCOUNT_SID?.startsWith('AC');
+  if (isDev && code === DEV_CODE) {
+    otpStore.delete(phone);
+    return { valid: true };
+  }
+
   const record = otpStore.get(phone);
 
   if (!record) return { valid: false, reason: 'OTP not found' };

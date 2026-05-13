@@ -51,6 +51,11 @@ export default function OtpScreen({ route, navigation }) {
         <Text style={styles.title}>קוד אימות</Text>
         <Text style={styles.subtitle}>שלחנו קוד ל-{phone}</Text>
 
+        {/* DEV MODE hint */}
+        <View style={styles.devBanner}>
+          <Text style={styles.devText}>🛠️ מצב פיתוח — השתמש בקוד: 000000</Text>
+        </View>
+
         {/* OTP Input */}
         <TextInput
           style={styles.otpInput}
@@ -117,7 +122,12 @@ const styles = StyleSheet.create({
   backBtn: { marginBottom: 30 },
   backText: { fontSize: 16, color: Colors.primary },
   title: { fontSize: 30, fontWeight: 'bold', color: Colors.text, textAlign: 'right' },
-  subtitle: { fontSize: 16, color: Colors.textLight, textAlign: 'right', marginBottom: 30 },
+  subtitle: { fontSize: 16, color: Colors.textLight, textAlign: 'right', marginBottom: 12 },
+  devBanner: {
+    backgroundColor: '#FFF3CD', borderRadius: 10,
+    padding: 10, marginBottom: 20, borderWidth: 1, borderColor: '#FFC107',
+  },
+  devText: { color: '#856404', fontSize: 14, textAlign: 'center', fontWeight: '600' },
   otpInput: {
     borderWidth: 2, borderColor: Colors.primary,
     borderRadius: 14, paddingVertical: 16,
