@@ -1,165 +1,468 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, Alert, KeyboardAvoidingView, Platform,
+  StyleSheet, Alert, KeyboardAvoidingView,
+  Platform, ActivityIndicator, Animated,
 } from 'react-native';
-import { verifyOtp } from '../../services/api';
+import { LinearGradient } from 'expo-linear-gradient';
+import { verifyOtp, sendOtp } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
-import { Colors } from '../../constants/colors';
+import { Colors, Radius, Shadow } from '../../constants/colors';
+
+const OTP_LENGTH = 6;
+const RESEND_COUNTDOWN = 60;
 
 export default function OtpScreen({ route, navigation }) {
   const { phone } = route.params;
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const [role, setRole] = useState('CAREGIVER');
-  const [isNewUser, setIsNewUser] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuthStore();
+  const [otp, setOtp]               = useState('');
+  const [name, setName]             = useState('');
+  const [role, setRole]             = useState('CAREGIVER');
+  const [isNewUser, setIsNewUser]   = useState(true);
+  const [loading, setLoading]       = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [countdown, setCountdown]   = useState(RESEND_COUNTDOWN);
+  const [canResend, setCanResend]   = useState(false);
+  const [error, setError]           = useState('');
 
-  const handleVerify = async () => {
-    if (code.length !== 6) {
-      Alert.alert('שגיאה', 'קוד האימות חייב להיות 6 ספרות');
+  const inputRef    = useRef(null);
+  const shakeAnim   = useRef(new Animated.Value(0)).current;
+  const { login }   = useAuthStore();
+
+  // ─── Countdown Timer ───────────────────────────────────
+  useEffect(() => {
+    if (countdown <= 0) { setCanResend(true); return; }
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  // ─── Auto-focus input ──────────────────────────────────
+  useEffect(() => {
+    const timer = setTimeout(() => inputRef.current?.focus(), 400);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // ─── Shake animation on error ─────────────────────────
+  const shake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 10,  duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 6,   duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -6,  duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0,   duration: 60, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // ─── Handle OTP input ─────────────────────────────────
+  const handleOtpChange = (text) => {
+    const digits = text.replace(/\D/g, '').slice(0, OTP_LENGTH);
+    setOtp(digits);
+    setError('');
+    if (digits.length === OTP_LENGTH) {
+      handleVerify(digits);
+    }
+  };
+
+  // ─── Verify OTP ───────────────────────────────────────
+  const handleVerify = async (code = otp) => {
+    if (code.length !== OTP_LENGTH) {
+      setError('נא להזין קוד בן 6 ספרות');
+      shake();
       return;
     }
     if (isNewUser && !name.trim()) {
-      Alert.alert('שגיאה', 'נא להזין שם');
+      setError('נא להזין את שמך');
+      shake();
       return;
     }
 
     setLoading(true);
+    setError('');
     try {
-      const res = await verifyOtp(phone, code, name, role);
+      const res = await verifyOtp(phone, code, name.trim(), role);
       await login(res.data.token, res.data.user);
     } catch (err) {
-      const msg = err.response?.data?.error || 'קוד שגוי או פג תוקף';
-      Alert.alert('שגיאה', msg);
+      const msg = err.response?.data?.error || 'קוד שגוי. נסה שוב.';
+      setError(msg);
+      setOtp('');
+      shake();
+      inputRef.current?.focus();
     } finally {
       setLoading(false);
     }
   };
 
+  // ─── Resend OTP ───────────────────────────────────────
+  const handleResend = async () => {
+    if (!canResend) return;
+    setResendLoading(true);
+    try {
+      await sendOtp(phone);
+      setCountdown(RESEND_COUNTDOWN);
+      setCanResend(false);
+      setOtp('');
+      setError('');
+      Alert.alert('✅ נשלח!', 'קוד חדש נשלח לטלפון שלך');
+    } catch {
+      Alert.alert('שגיאה', 'לא ניתן לשלוח קוד. נסה שוב.');
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  // ─── OTP Box rendering ────────────────────────────────
+  const renderBoxes = () =>
+    Array.from({ length: OTP_LENGTH }).map((_, i) => {
+      const filled   = i < otp.length;
+      const isCurrent = i === otp.length;
+      return (
+        <View
+          key={i}
+          style={[
+            styles.otpBox,
+            filled   && styles.otpBoxFilled,
+            isCurrent && styles.otpBoxActive,
+            error     && styles.otpBoxError,
+          ]}
+        >
+          <Text style={styles.otpDigit}>{otp[i] || ''}</Text>
+        </View>
+      );
+    });
+
+  const maskedPhone = phone.slice(0, -4) + '****';
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.inner}>
+      {/* ─── Header ─── */}
+      <LinearGradient
+        colors={Colors.primaryGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backText}>→ חזור</Text>
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>קוד אימות</Text>
+        <Text style={styles.headerSub}>שלחנו SMS ל-{maskedPhone}</Text>
+      </LinearGradient>
 
-        <Text style={styles.title}>קוד אימות</Text>
-        <Text style={styles.subtitle}>שלחנו קוד ל-{phone}</Text>
+      {/* ─── Card ─── */}
+      <View style={styles.card}>
 
-        {/* DEV MODE hint */}
+        {/* DEV hint */}
         <View style={styles.devBanner}>
-          <Text style={styles.devText}>🛠️ מצב פיתוח — השתמש בקוד: 000000</Text>
+          <Text style={styles.devText}>🛠️ מצב פיתוח — קוד: 000000</Text>
         </View>
 
-        {/* OTP Input */}
+        {/* OTP Boxes */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => inputRef.current?.focus()}
+        >
+          <Animated.View
+            style={[styles.boxesRow, { transform: [{ translateX: shakeAnim }] }]}
+          >
+            {renderBoxes()}
+          </Animated.View>
+        </TouchableOpacity>
+
+        {/* Hidden real input */}
         <TextInput
-          style={styles.otpInput}
-          placeholder="000000"
-          placeholderTextColor={Colors.textLight}
+          ref={inputRef}
+          style={styles.hiddenInput}
+          value={otp}
+          onChangeText={handleOtpChange}
           keyboardType="number-pad"
-          maxLength={6}
-          value={code}
-          onChangeText={setCode}
-          textAlign="center"
-          letterSpacing={8}
+          maxLength={OTP_LENGTH}
+          caretHidden
         />
 
-        {/* New user fields */}
+        {/* Error message */}
+        {error ? <Text style={styles.errorText}>⚠️ {error}</Text> : null}
+
+        {/* ─── New User Fields ─── */}
         {isNewUser && (
-          <>
-            <Text style={styles.label}>שמך המלא</Text>
+          <View style={styles.newUserSection}>
+            <View style={styles.sectionDivider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>פרטים אישיים</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Text style={styles.inputLabel}>שמך המלא</Text>
             <TextInput
-              style={styles.input}
+              style={styles.textInput}
               placeholder="ישראל ישראלי"
               placeholderTextColor={Colors.textLight}
               value={name}
               onChangeText={setName}
               textAlign="right"
+              returnKeyType="done"
             />
 
-            <Text style={styles.label}>אני...</Text>
+            <Text style={styles.inputLabel}>אני...</Text>
             <View style={styles.roleRow}>
-              <TouchableOpacity
-                style={[styles.roleBtn, role === 'CAREGIVER' && styles.roleBtnActive]}
-                onPress={() => setRole('CAREGIVER')}
-              >
-                <Text style={[styles.roleBtnText, role === 'CAREGIVER' && styles.roleBtnTextActive]}>
-                  👨‍👧 בן/בת משפחה
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.roleBtn, role === 'PATIENT' && styles.roleBtnActive]}
-                onPress={() => setRole('PATIENT')}
-              >
-                <Text style={[styles.roleBtnText, role === 'PATIENT' && styles.roleBtnTextActive]}>
-                  👴 קשיש
-                </Text>
-              </TouchableOpacity>
+              {[
+                { value: 'CAREGIVER', emoji: '👨‍👧', label: 'בן/בת משפחה' },
+                { value: 'PATIENT',   emoji: '👴',   label: 'קשיש / מטופל' },
+              ].map(r => (
+                <TouchableOpacity
+                  key={r.value}
+                  style={[styles.roleBtn, role === r.value && styles.roleBtnActive]}
+                  onPress={() => setRole(r.value)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.roleEmoji}>{r.emoji}</Text>
+                  <Text style={[styles.roleLabel, role === r.value && styles.roleLabelActive]}>
+                    {r.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </>
+          </View>
         )}
 
+        {/* ─── Verify Button ─── */}
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleVerify}
-          disabled={loading}
+          style={[styles.verifyBtn, (loading || otp.length < OTP_LENGTH) && styles.btnDisabled]}
+          onPress={() => handleVerify()}
+          disabled={loading || otp.length < OTP_LENGTH}
+          activeOpacity={0.88}
         >
-          <Text style={styles.buttonText}>{loading ? 'מאמת...' : 'כניסה ✓'}</Text>
+          <LinearGradient
+            colors={Colors.primaryGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.verifyBtnGradient}
+          >
+            {loading ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <Text style={styles.verifyBtnText}>אמת ✓</Text>
+            )}
+          </LinearGradient>
         </TouchableOpacity>
+
+        {/* ─── Resend ─── */}
+        <View style={styles.resendRow}>
+          {canResend ? (
+            <TouchableOpacity onPress={handleResend} disabled={resendLoading}>
+              {resendLoading
+                ? <ActivityIndicator size="small" color={Colors.primary} />
+                : <Text style={styles.resendActive}>שלח קוד חדש</Text>
+              }
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.resendCountdown}>
+              שליחה מחדש בעוד{' '}
+              <Text style={styles.resendTimer}>{countdown}s</Text>
+            </Text>
+          )}
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  inner: { flex: 1, paddingHorizontal: 30, paddingTop: 60 },
-  backBtn: { marginBottom: 30 },
-  backText: { fontSize: 16, color: Colors.primary },
-  title: { fontSize: 30, fontWeight: 'bold', color: Colors.text, textAlign: 'right' },
-  subtitle: { fontSize: 16, color: Colors.textLight, textAlign: 'right', marginBottom: 12 },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+
+  // Header
+  header: {
+    paddingTop: 60,
+    paddingBottom: 48,
+    paddingHorizontal: 24,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
+  },
+  backBtn: { marginBottom: 20 },
+  backText: { fontSize: 16, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: Colors.white,
+    textAlign: 'right',
+  },
+  headerSub: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.75)',
+    textAlign: 'right',
+    marginTop: 6,
+  },
+
+  // Card
+  card: {
+    backgroundColor: Colors.card,
+    marginHorizontal: 20,
+    marginTop: -24,
+    borderRadius: 24,
+    padding: 24,
+    ...Shadow.card,
+  },
+
+  // Dev banner
   devBanner: {
-    backgroundColor: '#FFF3CD', borderRadius: 10,
-    padding: 10, marginBottom: 20, borderWidth: 1, borderColor: '#FFC107',
+    backgroundColor: Colors.warningLight,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: Colors.warning,
   },
-  devText: { color: '#856404', fontSize: 14, textAlign: 'center', fontWeight: '600' },
-  otpInput: {
-    borderWidth: 2, borderColor: Colors.primary,
-    borderRadius: 14, paddingVertical: 16,
-    fontSize: 32, fontWeight: 'bold',
-    backgroundColor: Colors.white, color: Colors.text,
-    marginBottom: 30,
+  devText: {
+    color: '#856404',
+    fontSize: 13,
+    textAlign: 'center',
+    fontWeight: '600',
   },
-  label: {
-    fontSize: 16, color: Colors.text,
-    textAlign: 'right', marginBottom: 8, fontWeight: '600',
+
+  // OTP Boxes
+  boxesRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 8,
   },
-  input: {
-    borderWidth: 1.5, borderColor: Colors.border,
-    borderRadius: 12, paddingHorizontal: 16,
-    paddingVertical: 12, fontSize: 18,
-    backgroundColor: Colors.white, color: Colors.text, marginBottom: 20,
+  otpBox: {
+    width: 48,
+    height: 58,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background,
   },
-  roleRow: { flexDirection: 'row', gap: 12, marginBottom: 30 },
-  roleBtn: {
-    flex: 1, borderWidth: 1.5, borderColor: Colors.border,
-    borderRadius: 12, paddingVertical: 14, alignItems: 'center',
+  otpBoxFilled: {
+    borderColor: Colors.primaryLight,
     backgroundColor: Colors.white,
   },
-  roleBtnActive: { borderColor: Colors.primary, backgroundColor: '#E8F4FD' },
-  roleBtnText: { fontSize: 15, color: Colors.textLight },
-  roleBtnTextActive: { color: Colors.primary, fontWeight: 'bold' },
-  button: {
-    backgroundColor: Colors.primary, borderRadius: 14,
-    paddingVertical: 18, alignItems: 'center',
-    shadowColor: Colors.primary, shadowOpacity: 0.3,
-    shadowRadius: 8, elevation: 4,
+  otpBoxActive: {
+    borderColor: Colors.primary,
+    borderWidth: 2.5,
   },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: Colors.white, fontSize: 20, fontWeight: 'bold' },
+  otpBoxError: {
+    borderColor: Colors.danger,
+    backgroundColor: Colors.dangerLight,
+  },
+  otpDigit: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+
+  // Hidden input
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 1,
+    height: 1,
+  },
+
+  // Error
+  errorText: {
+    textAlign: 'center',
+    color: Colors.danger,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+
+  // New user section
+  newUserSection: { marginTop: 16 },
+  sectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 18,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  dividerText: { fontSize: 13, color: Colors.textLight, fontWeight: '500' },
+  inputLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text,
+    textAlign: 'right',
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 17,
+    color: Colors.text,
+    backgroundColor: Colors.background,
+    marginBottom: 16,
+  },
+  roleRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+  },
+  roleBtn: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    gap: 6,
+  },
+  roleBtnActive: {
+    borderColor: Colors.primary,
+    backgroundColor: '#EBF5FB',
+  },
+  roleEmoji: { fontSize: 26 },
+  roleLabel: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600', textAlign: 'center' },
+  roleLabelActive: { color: Colors.primary },
+
+  // Verify button
+  verifyBtn: {
+    borderRadius: Radius.md,
+    marginTop: 20,
+    overflow: 'hidden',
+    ...Shadow.button,
+  },
+  btnDisabled: { opacity: 0.5 },
+  verifyBtnGradient: {
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  verifyBtnText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.white,
+    letterSpacing: 0.5,
+  },
+
+  // Resend
+  resendRow: {
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  resendCountdown: {
+    fontSize: 14,
+    color: Colors.textLight,
+  },
+  resendTimer: {
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  resendActive: {
+    fontSize: 15,
+    color: Colors.primary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
 });

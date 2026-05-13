@@ -39,14 +39,17 @@ enum SubscriptionStatus {
 // ─── Users ───────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(uuid())
-  phone     String   @unique
-  name      String
-  role      Role
-  language  Language @default(HE)
-  fcmToken  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  phone        String?  @unique
+  googleId     String?  @unique
+  email        String?  @unique
+  avatar       String?
+  name         String
+  role         Role
+  language     Language @default(HE)
+  fcmToken     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   patientProfile PatientProfile?
   caregiverLinks CaregiverPatient[] @relation("Caregiver")

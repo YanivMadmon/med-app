@@ -21,6 +21,8 @@ api.interceptors.request.use(async (config) => {
 export const sendOtp = (phone) => api.post('/auth/send-otp', { phone });
 export const verifyOtp = (phone, code, name, role) =>
   api.post('/auth/verify-otp', { phone, code, name, role });
+export const googleAuthApi = (idToken, role) =>
+  api.post('/auth/google', { idToken, role });
 export const getMe = () => api.get('/auth/me');
 export const updateFcmToken = (fcmToken) =>
   api.post('/auth/update-fcm-token', { fcmToken });
