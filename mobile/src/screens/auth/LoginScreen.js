@@ -33,14 +33,19 @@ export default function LoginScreen({ navigation }) {
 
   // ─── Google OAuth ─────────────────────────────────────
   const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId:     process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId:     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri: makeRedirectUri({
+      scheme: 'https',
+      path:   'auth.expo.io/@yanivm93/medapp',
+    }),
   });
 
   React.useEffect(() => {
     if (response?.type === 'success') {
-      handleGoogleSuccess(response.authentication.idToken);
+      const idToken = response.authentication?.idToken;
+      if (idToken) handleGoogleSuccess(idToken);
+    } else if (response?.type === 'error') {
+      Alert.alert('שגיאה', 'כניסה עם Google נכשלה. נסה שוב.');
     }
   }, [response]);
 
@@ -120,15 +125,19 @@ export default function LoginScreen({ navigation }) {
 
           {/* ─── Google Button ─── */}
           <TouchableOpacity
-            style={[styles.googleBtn, styles.googleBtnDisabled]}
-            onPress={() => Alert.alert('בקרוב 🔜', 'כניסה עם Google תהיה זמינה בקרוב.\nבינתיים השתמש במספר טלפון.')}
+            style={[styles.googleBtn, (!request || loadingGoogle) && styles.googleBtnDisabled]}
+            onPress={() => promptAsync()}
+            disabled={!request || loadingGoogle}
             activeOpacity={0.85}
           >
-            <Text style={styles.googleIcon}>G</Text>
-            <Text style={styles.googleText}>המשך עם Google</Text>
-            <View style={styles.googleComingSoon}>
-              <Text style={styles.googleComingSoonText}>בקרוב</Text>
-            </View>
+            {loadingGoogle ? (
+              <ActivityIndicator color={Colors.text} size="small" />
+            ) : (
+              <>
+                <Text style={styles.googleIcon}>G</Text>
+                <Text style={styles.googleText}>המשך עם Google</Text>
+              </>
+            )}
           </TouchableOpacity>
 
           {/* ─── Divider ─── */}
