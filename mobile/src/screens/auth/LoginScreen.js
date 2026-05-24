@@ -120,19 +120,15 @@ export default function LoginScreen({ navigation }) {
 
           {/* ─── Google Button ─── */}
           <TouchableOpacity
-            style={styles.googleBtn}
-            onPress={() => promptAsync()}
-            disabled={!request || loadingGoogle}
+            style={[styles.googleBtn, styles.googleBtnDisabled]}
+            onPress={() => Alert.alert('בקרוב 🔜', 'כניסה עם Google תהיה זמינה בקרוב.\nבינתיים השתמש במספר טלפון.')}
             activeOpacity={0.85}
           >
-            {loadingGoogle ? (
-              <ActivityIndicator color={Colors.text} />
-            ) : (
-              <>
-                <Text style={styles.googleIcon}>G</Text>
-                <Text style={styles.googleText}>המשך עם Google</Text>
-              </>
-            )}
+            <Text style={styles.googleIcon}>G</Text>
+            <Text style={styles.googleText}>המשך עם Google</Text>
+            <View style={styles.googleComingSoon}>
+              <Text style={styles.googleComingSoonText}>בקרוב</Text>
+            </View>
           </TouchableOpacity>
 
           {/* ─── Divider ─── */}
@@ -296,6 +292,9 @@ const styles = StyleSheet.create({
     gap: 10,
     ...Shadow.card,
   },
+  googleBtnDisabled: {
+    opacity: 0.7,
+  },
   googleIcon: {
     fontSize: 20,
     fontWeight: '800',
@@ -305,6 +304,18 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: Colors.text,
+  },
+  googleComingSoon: {
+    backgroundColor: Colors.warning,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  googleComingSoonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.white,
   },
 
   // Divider
